@@ -120,7 +120,7 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
     // display image
     string windowName = "3D Objects";
-    cv::namedWindow(windowName, 1);
+    cv::namedWindow(windowName);
     cv::imshow(windowName, topviewImg);
 
     if(bWait)
@@ -154,5 +154,56 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    // ...
+    //define previous and current bounding boxes
+    vector<BoundingBox> bbsPrevious = prevFrame.boundingBoxes;
+    vector<BoundingBox> bbsCurrent = currFrame.boundingBoxes;
+    vector<cv::KeyPoint> kpPrevious = prevFrame.keypoints;
+    vector<cv::KeyPoint> kpCurrent = currFrame.keypoints;
+    
+    // Loop over all combinations of bounding boxes
+    //loop over bounding boxes in the previous frame
+    for (auto itPrev = bbsPrevious.begin(); itPrev != bbsPrevious.end(); itPrev++)
+    {   
+        //vectors contained in this bounding box
+        vector<cv::DMatch> containedMatches;
+        //get matched keypoints contained in this bounding box
+        for(auto itMatches = matches.begin(); itMatches!=matches.end(); itMatches++)
+        {
+            int queryIdx = itMatches->queryIdx;
+            int trainIdx = itMatches->trainIdx;
+           
+            if(itPrev->roi.contains(kpPrevious[queryIdx].pt)== true)
+            {
+                containedMatches.push_back(*itMatches);
+            }
+        }
+        
+        int maxKeypoints = 0;
+        int maxIdx = 255;
+        //loop over bounding boxes in the current frame
+        for(auto itCurr = bbsCurrent.begin(); itCurr != bbsCurrent.end(); itCurr++)
+        {
+            int currKeyPoints = 0;
+            for(auto itMatches = containedMatches.begin(); itMatches!=containedMatches.end(); itMatches++)
+            {
+                int queryIdx = itMatches->queryIdx;
+                int trainIdx = itMatches->trainIdx;
+                if(itCurr->roi.contains(kpCurrent[trainIdx].pt))
+                {
+                    currKeyPoints++;
+                }
+            }
+
+            if (currKeyPoints > maxKeypoints)
+            {
+                maxKeypoints = currKeyPoints;
+                maxIdx = itCurr->boxID;
+            }
+        }
+        if(maxKeypoints != 0)
+        {
+            bbBestMatches.insert({itPrev->boxID,maxIdx});
+        }
+
+    }
 }
