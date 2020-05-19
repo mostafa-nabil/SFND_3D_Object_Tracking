@@ -11,6 +11,8 @@
 using namespace std;
 
 
+
+
 // Create groups of Lidar points whose projection into the camera falls into the same bounding box
 void clusterLidarWithROI(std::vector<BoundingBox> &boundingBoxes, std::vector<LidarPoint> &lidarPoints, float shrinkFactor, cv::Mat &P_rect_xx, cv::Mat &R_rect_xx, cv::Mat &RT)
 {
@@ -133,7 +135,35 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
-    // ...
+    //find matches included in the bounding box
+    vector<cv::DMatch> matchesIn;
+    double sumDist = 0;
+    double meanDist = 0;
+    for(auto it = kptMatches.begin(); it != kptMatches.end(); it++)
+    {
+        if(boundingBox.roi.contains(kptsCurr[it->trainIdx].pt))
+        {
+            matchesIn.push_back(*it);
+            //sum the distance of the matches
+            sumDist += it->distance;
+        }
+    }
+    cout << sumDist << endl;
+    //calculate the mean of the distances
+    meanDist = sumDist/matchesIn.size();
+
+    //remove inliers
+
+    for(auto it = matchesIn.begin(); it != matchesIn.end(); it++)
+    {
+        double deviation = abs(it->distance - meanDist)/meanDist;
+        if (deviation > 50)
+        {
+            matchesIn.erase(it);
+            it = matchesIn.begin();
+        }
+    }
+    boundingBox.kptMatches = matchesIn;
 }
 
 
@@ -141,14 +171,103 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
 {
-    // ...
+    vector<double> distRatios;
+
+    
+    for (auto it = kptMatches.begin(); it != kptMatches.end() - 1; it++)
+    {
+        cv::KeyPoint kptsCurrOuter = kptsCurr.at(it->trainIdx);
+        cv::KeyPoint kptsPrevOuter = kptsPrev.at(it->queryIdx);
+
+        for (auto it2 = kptMatches.begin()+1; it2 != kptMatches.end(); it2++)
+        {
+            double minDist = 100.0;
+            cv::KeyPoint kptsCurrInner = kptsCurr.at(it2->trainIdx);
+            cv::KeyPoint kptsPrevInner = kptsPrev.at(it2->queryIdx);
+
+            double distCurr = cv::norm(kptsCurrOuter.pt - kptsCurrInner.pt);
+            double distPrev = cv::norm(kptsPrevOuter.pt - kptsPrevInner.pt);
+            double distRatio = 0;
+            if(distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            {
+                distRatio = distCurr / distPrev;
+                distRatios.push_back(distRatio);
+            }
+        }
+    }
+
+    if (distRatios.size() == 0)
+    {
+        cout << "NAAAAAAAAAAAAAAN" << endl;
+        TTC = NAN;
+        return;
+    }
+
+    std::sort(distRatios.begin(), distRatios.end());
+    long medIndex = floor(distRatios.size() / 2.0);
+    double medDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medIndex - 1] + distRatios[medIndex]) / 2.0 : distRatios[medIndex]; // compute median dist. ratio to remove outlier influence
+
+    double dT = 1 / frameRate;
+    TTC = (-dT) / (1 - medDistRatio);
+    cout <<"TTC cam " << TTC << endl;
+
+
 }
 
+//inserts element into sorted vector
+void insertSorted(LidarPoint point, std::vector<double> &list )
+{
+    
+    list.push_back(point.x);
+
+    sort(list.begin(),list.end());
+
+    // if(list.size() > 30)
+    // {
+    //     list.pop_back();
+    // }
+    
+}
+
+//returns the median of the list
+double calcMedian(std::vector<double> &list)
+{
+    return list[(list.size()-1)/2];
+}
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
-    // ...
+    //for current and previous lidar points, get the median of the closest points in x direction
+    std::vector<double> listPrev;
+    std::vector<double> listCurr;
+
+    //for previous Lidar Points
+    for(auto it =  lidarPointsPrev.begin(); it != lidarPointsPrev.end(); it++)
+    {
+        insertSorted(*it,listPrev);
+
+    }
+    //for current Lidar Points
+    for(auto it =  lidarPointsCurr.begin(); it != lidarPointsCurr.end(); it++)
+    {
+        insertSorted(*it,listCurr);
+
+    }
+
+    //get median
+    double x_medianPrev = calcMedian(listPrev);
+    double x_medianCurr = calcMedian(listCurr);
+
+    //get TTC
+    double time = 1/frameRate;
+    double distance = x_medianPrev - x_medianCurr;
+    double velocity = distance / time;
+    
+    TTC = x_medianCurr/velocity;
+    cout <<"TTC lidar " << TTC << endl;
+
+
 }
 
 
