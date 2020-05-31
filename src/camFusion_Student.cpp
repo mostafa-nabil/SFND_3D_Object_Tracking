@@ -122,7 +122,7 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
     // display image
     string windowName = "3D Objects";
-    cv::namedWindow(windowName);
+    cv::namedWindow(windowName,4);
     cv::imshow(windowName, topviewImg);
 
     if(bWait)
@@ -152,7 +152,7 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
     //calculate the mean of the distances
     meanDist = sumDist/matchesIn.size();
 
-    //remove inliers
+    //remove outliers
 
     for(auto it = matchesIn.begin(); it != matchesIn.end(); it++)
     {
@@ -207,11 +207,11 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
     long medIndex = floor(distRatios.size() / 2.0);
     double medDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medIndex - 1] + distRatios[medIndex]) / 2.0 : distRatios[medIndex]; // compute median dist. ratio to remove outlier influence
 
-    double dT = 1 / frameRate;
+    double dT = 1.0 / frameRate;
     TTC = (-dT) / (1 - medDistRatio);
     cout <<"TTC cam " << TTC << endl;
-
-
+    
+    
 }
 
 //inserts element into sorted vector
@@ -260,7 +260,7 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     double x_medianCurr = calcMedian(listCurr);
 
     //get TTC
-    double time = 1/frameRate;
+    double time = 1.0/frameRate;
     double distance = x_medianPrev - x_medianCurr;
     double velocity = distance / time;
     
